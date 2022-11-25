@@ -77,7 +77,7 @@ def plot(X, Y=None, xlabel=None, ylabel=None, legend=None, xlim=None,
         legend = []
 
     set_figsize(figsize)
-    axes = axes if axes else d2l.plt.gca()
+    axes = axes or d2l.plt.gca()
 
     # Return True if `X` (tensor or list) has 1 axis
     def has_one_axis(X):
@@ -222,12 +222,12 @@ def accuracy(y_hat, y):  #@save
 
 
 # Defined in file: ./chapter_linear-networks/softmax-regression-scratch.md
-def evaluate_accuracy(net, data_iter):  #@save
+def evaluate_accuracy(net, data_iter):    #@save
     """Compute the accuracy for a model on a dataset."""
     if isinstance(net, torch.nn.Module):
         net.eval()  # Set the model to evaluation mode
     metric = Accumulator(2)  # No. of correct predictions, no. of predictions
-    for _, (X, y) in enumerate(data_iter):
+    for X, y in data_iter:
         metric.add(accuracy(net(X), y), d2l.size(y))
     return metric[0] / metric[1]
 
@@ -332,14 +332,14 @@ def train_ch3(net, train_iter, test_iter, loss, num_epochs, updater):  #@save
 
 
 # Defined in file: ./chapter_linear-networks/softmax-regression-scratch.md
-def predict_ch3(net, test_iter, n=6):  #@save
+def predict_ch3(net, test_iter, n=6):    #@save
     """Predict labels (defined in Chapter 3)."""
     for X, y in test_iter:
         break
     trues = d2l.get_fashion_mnist_labels(y)
     preds = d2l.get_fashion_mnist_labels(d2l.argmax(net(X), axis=1))
     titles = [true +'\n' + pred for true, pred in zip(trues, preds)]
-    d2l.show_images(d2l.reshape(X[0:n], (n, 28, 28)), 1, n, titles=titles[0:n])
+    d2l.show_images(d2l.reshape(X[:n], (n, 28, 28)), 1, n, titles=titles[:n])
 
 
 # Defined in file: ./chapter_multilayer-perceptrons/underfit-overfit.md
@@ -353,7 +353,7 @@ def evaluate_loss(net, data_iter, loss):  #@save
 
 
 # Defined in file: ./chapter_multilayer-perceptrons/kaggle-house-price.md
-DATA_HUB = dict()  #@save
+DATA_HUB = {}
 DATA_URL = 'http://d2l-data.s3-accelerate.amazonaws.com/'  #@save
 
 
@@ -362,7 +362,7 @@ DATA_URL = 'http://d2l-data.s3-accelerate.amazonaws.com/'  #@save
 
 
 # Defined in file: ./chapter_multilayer-perceptrons/kaggle-house-price.md
-def download(name, cache_dir=os.path.join('..', 'data')):  #@save
+def download(name, cache_dir=os.path.join('..', 'data')):    #@save
     """Download a file inserted into DATA_HUB, return the local filename."""
     assert name in DATA_HUB, f"{name} does not exist in {DATA_HUB}."
     url, sha1_hash = DATA_HUB[name]
@@ -372,10 +372,10 @@ def download(name, cache_dir=os.path.join('..', 'data')):  #@save
         sha1 = hashlib.sha1()
         with open(fname, 'rb') as f:
             while True:
-                data = f.read(1048576)
-                if not data:
+                if data := f.read(1048576):
+                    sha1.update(data)
+                else:
                     break
-                sha1.update(data)
         if sha1.hexdigest() == sha1_hash:
             return fname  # Hit cache
     print(f'Downloading {fname} from {url}...')
@@ -429,11 +429,11 @@ def try_gpu(i=0):  #@save
 
 
 # Defined in file: ./chapter_deep-learning-computation/use-gpu.md
-def try_all_gpus():  #@save
+def try_all_gpus():    #@save
     """Return all available GPUs, or [cpu(),] if no GPU exists."""
     ctxes = [torch.device(f'cuda:{i}')
              for i in range(torch.cuda.device_count())]
-    return ctxes if ctxes else [torch.device('cpu')]
+    return ctxes or [torch.device('cpu')]
 
 
 # Defined in file: ./chapter_convolutional-neural-networks/conv-layer.md
@@ -464,8 +464,9 @@ def train_ch6(net, train_iter, test_iter, num_epochs, lr,
               device=d2l.try_gpu()):
     """Train and evaluate a model with CPU or GPU."""
     def init_weights(m):
-        if type(m) == nn.Linear or type(m) == nn.Conv2d:
+        if type(m) in [nn.Linear, nn.Conv2d]:
             torch.nn.init.xavier_uniform_(m.weight)
+
     net.apply(init_weights)
     print('training on', device)
     net.to(device)
@@ -564,7 +565,7 @@ class Vocab:  #@save
         self.unk, uniq_tokens = 0, ['<unk>'] + reserved_tokens
         uniq_tokens += [token for token, freq in self.token_freqs
                         if freq >= min_freq and token not in uniq_tokens]
-        self.idx_to_token, self.token_to_idx = [], dict()
+        self.idx_to_token, self.token_to_idx = [], {}
         for token in uniq_tokens:
             self.idx_to_token.append(token)
             self.token_to_idx[token] = len(self.idx_to_token) - 1
@@ -573,14 +574,18 @@ class Vocab:  #@save
         return len(self.idx_to_token)
 
     def __getitem__(self, tokens):
-        if not isinstance(tokens, (list, tuple)):
-            return self.token_to_idx.get(tokens, self.unk)
-        return [self.__getitem__(token) for token in tokens]
+        return (
+            [self.__getitem__(token) for token in tokens]
+            if isinstance(tokens, (list, tuple))
+            else self.token_to_idx.get(tokens, self.unk)
+        )
 
     def to_tokens(self, indices):
-        if not isinstance(indices, (list, tuple)):
-            return self.idx_to_token[indices]
-        return [self.idx_to_token[index] for index in indices]
+        return (
+            [self.idx_to_token[index] for index in indices]
+            if isinstance(indices, (list, tuple))
+            else self.idx_to_token[indices]
+        )
 
 
 # Defined in file: ./chapter_recurrent-neural-networks/text-preprocessing.md
@@ -925,8 +930,7 @@ class MaskedSoftmaxCELoss(nn.CrossEntropyLoss):
         weights = sequence_mask(weights, valid_len)
         self.reduction='none'
         unweighted_loss = super(MaskedSoftmaxCELoss, self).forward(pred.permute(0,2,1), label)
-        weighted_loss = (unweighted_loss*weights).mean(dim=1)
-        return weighted_loss
+        return (unweighted_loss*weights).mean(dim=1)
 
 
 # Defined in file: ./chapter_recurrent-modern/seq2seq.md
@@ -992,19 +996,18 @@ def predict_s2s_ch9(model, src_sentence, src_vocab, tgt_vocab, num_steps,
 # Defined in file: ./chapter_attention-mechanisms/attention.md
 def masked_softmax(X, valid_len):
     """Perform softmax by filtering out some elements."""
-    # X: 3-D tensor, valid_len: 1-D or 2-D tensor
     if valid_len is None:
         return nn.functional.softmax(X, dim=-1)
-    else:
-        shape = X.shape
-        if valid_len.dim() == 1:
-            valid_len = torch.repeat_interleave(valid_len, repeats=shape[1],
-                                                dim=0)
-        else:
-            valid_len = valid_len.reshape(-1)
-        # Fill masked elements with a large negative, whose exp is 0
-        X = d2l.sequence_mask(X.reshape(-1, shape[-1]), valid_len, value=-1e6)
-        return nn.functional.softmax(X.reshape(shape), dim=-1)
+    shape = X.shape
+    valid_len = (
+        torch.repeat_interleave(valid_len, repeats=shape[1], dim=0)
+        if valid_len.dim() == 1
+        else valid_len.reshape(-1)
+    )
+
+    # Fill masked elements with a large negative, whose exp is 0
+    X = d2l.sequence_mask(X.reshape(-1, shape[-1]), valid_len, value=-1e6)
+    return nn.functional.softmax(X.reshape(shape), dim=-1)
 
 
 # Defined in file: ./chapter_attention-mechanisms/attention.md
@@ -1051,13 +1054,13 @@ def annotate(text, xy, xytext):  #@save
 
 
 # Defined in file: ./chapter_optimization/gd.md
-def train_2d(trainer, steps=20):  #@save
+def train_2d(trainer, steps=20):    #@save
     """Optimize a 2-dim objective function with a customized trainer."""
     # s1 and s2 are internal state variables and will
     # be used later in the chapter
     x1, x2, s1, s2 = -5, -2, 0, 0
     results = [(x1, x2)]
-    for i in range(steps):
+    for _ in range(steps):
         x1, x2, s1, s2 = trainer(x1, x2, s1, s2)
         results.append((x1, x2))
     return results
